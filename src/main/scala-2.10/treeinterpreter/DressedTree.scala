@@ -1,72 +1,59 @@
 package treeinterpreter
 
 import org.apache.spark.mllib.linalg.Vector
-import org.apache.spark.mllib.tree.configuration.Algo._
 import org.apache.spark.mllib.tree.model.{DecisionTreeModel, Node}
-import treeinterpreter.DressedTree._
+import treeinterpreter.TreeInterpretationTools._
 import treeinterpreter.TreeNode._
 
 case class DressedTree(model: DecisionTreeModel, bias: Double, contributionMap: NodeContributions) {
+  val topTreeNode: Node = model.topNode
 
-  implicit def nodeType(node: Node): TreeNode = model.algo match {
-    case Classification => ClassificationNode(node)
-    case Regression => RegressionNode(node)
+  implicit def nodeType(node: Node): TreeNode = TreeNode.typedNode(node, model.algo)
+
+  private def predictLeafID(features: Vector): NodeID = topTreeNode.predictLeaf(features)
+
+  def predictLeaf(point: Vector): TreeInterpretation = {
+    val leaf: NodeID = predictLeafID(point)
+    val prediction: Double = model.predict(point)
+    val contribution: NodeContribution = contributionMap(leaf)
+    TreeInterpretation(bias, prediction, contribution)
   }
 
-  private def predictLeafID(features: Vector): NodeID = model.topNode.predictLeaf(features)
-
-  def predictLeaf(point: Vector): Interp = {
-    val leaf = predictLeafID(point)
-    val prediction = model.predict(point)
-    val contribution = contributionMap(leaf)
-    Interp(bias, prediction, contribution)
-  }
-
-  def interpret(point: Vector) = predictLeaf(point)
+  def interpret(point: Vector): TreeInterpretation = predictLeaf(point)
 }
 
-
 object DressedTree {
-
-  type Feature = Option[NodeID]
-
-  type NodeContributions = Map[NodeID, Map[Feature, Double]]
-
   def arrayprint[A](x: Array[A]): Unit = println(x.deep.mkString("\n"))
 
   def trainInterpreter(model: DecisionTreeModel): DressedTree = {
     val topNode = model.topNode
 
-    implicit def nodeType(node: Node): TreeNode = model.algo match {
-      case Classification => ClassificationNode(node)
-      case Regression => RegressionNode(node)
-    }
-    type Path = Array[TreeNode]
-
-    type PathBundle = Array[Path]
-
-    val bias = topNode.value
-
-    var Paths: PathBundle = Array()
+    val bias = TreeNode.typedNode(model.topNode, model.algo).value
 
     def buildPath(paths: Path, node: Node): PathBundle = {
-      val TreeNode = nodeType(node)
-      if (node.isLeaf) Array(paths :+ TreeNode)
+      // Get the current node as ClassificationNode or a RegressionNode
+      val treeNode = TreeNode.typedNode(node, model.algo)
+
+      // If this is a leaf node, then we're done on this path.
+      if (node.isLeaf) Array(paths :+ treeNode)
       else {
+        // Otherwise, get the nodes to the left and right and recurse them, as well.
         import node._
-        val buildRight = buildPath(paths :+ TreeNode, rightNode.get)
-        val buildLeft = buildPath(paths :+ TreeNode, leftNode.get)
+        val buildRight = buildPath(paths :+ treeNode, rightNode.get)
+        val buildLeft = buildPath(paths :+ treeNode, leftNode.get)
         buildRight ++ buildLeft
       }
     }
 
+    // Recurse the tree, collecting a PathBundle, in reverse order.
     val paths = buildPath(Array(), topNode).map(_.sorted.reverse)
     DressedTree.arrayprint(paths)
 
+    // As we ascend the tree, capture the change in value and the feature id
     val contributions: NodeContributions = paths.flatMap(path => {
-
       val contribMap = {
-        {path zip path.tail
+        {
+          path zip path.tail
         }.flatMap {
           case (currentNode, prevNode) =>
             Map(prevNode.feature -> {

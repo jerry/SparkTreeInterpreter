@@ -8,3 +8,5 @@ out
 /.idea/modules/sparktreeinterpreter-build.iml
 /.idea/misc.xml
 /.idea/compiler.xml
+.DS_Store
+/.idea/sqldialects.xml
