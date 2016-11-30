@@ -24,10 +24,6 @@ class DressedClassifierForest(rf: RandomForestClassificationModel) extends Seria
     TreeInterpretation(avgBias, avgPrediction, avgContributions, t1.treeCount, checkSum)
   }
 
-  def interpret(df: DataFrame): DataFrame = {
-    //
-  }
-
   def decisionTrees(): Array[DecisionTreeClassificationModel] = {
     val ru = scala.reflect.runtime.universe
     val m = ru.runtimeMirror(getClass.getClassLoader)

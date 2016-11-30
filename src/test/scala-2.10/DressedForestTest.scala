@@ -95,8 +95,6 @@ class DressedForestTest extends FunSuite with SharedSparkContext {
 //
 //    interpRDD.collect().foreach(item=> assert(scala.math.abs(item.checksum/item.prediction-1)<.2))
   }
-
-  def rfModel: RandomForestClassificationModel
 }
 
 
