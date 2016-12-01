@@ -1,4 +1,3 @@
-import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.RandomForest

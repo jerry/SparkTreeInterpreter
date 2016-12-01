@@ -1,9 +1,8 @@
-import java.util.Date
-
 import com.holdenkarau.spark.testing.{LocalSparkContext, SparkContextProvider}
 import org.apache.spark._
 import org.apache.spark.sql.{SQLContext, SparkSession}
 import org.scalatest.{BeforeAndAfterAll, Suite}
+import java.util.Date
 
 /** Shares a local `SparkContext` between all tests in a suite and closes it at the end. */
 trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
@@ -35,8 +34,8 @@ trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
 
   override def afterAll() {
     try {
-      LocalSparkContext.stop(_sc)
-      _sc = null
+//      LocalSparkContext.stop(_sc)
+//      _sc = null
     } finally {
       super.afterAll()
     }
