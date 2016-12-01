@@ -1,3 +1,4 @@
+import com.holdenkarau.spark.testing.SharedSparkContext
 import org.apache.spark.mllib.linalg.Vectors
 import org.apache.spark.mllib.regression.LabeledPoint
 import org.apache.spark.mllib.tree.RandomForest
@@ -5,7 +6,7 @@ import org.apache.spark.mllib.tree.model.RandomForestModel
 import org.scalatest.FunSuite
 import treeinterpreter.{DressedForest, Interp}
 
-class TestTreeInterpreter extends FunSuite with SharedSparkContext {
+class TestTreeInterpreter extends FunSuite with TestSparkContext {
   test("Random Forest Regression Test") {
     implicit val _sc = sc
 

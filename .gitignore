@@ -10,3 +10,5 @@ out
 /.idea/compiler.xml
 .DS_Store
 /.idea/sqldialects.xml
+/src/test/resources/irisRandomForestPipeline
+/src/test/resources/irisRandomForestClassificationModel
