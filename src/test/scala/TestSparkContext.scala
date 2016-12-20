@@ -1,8 +1,9 @@
-import com.holdenkarau.spark.testing.{LocalSparkContext, SparkContextProvider}
+import java.util.Date
+
+import com.holdenkarau.spark.testing.SparkContextProvider
 import org.apache.spark._
 import org.apache.spark.sql.{SQLContext, SparkSession}
 import org.scalatest.{BeforeAndAfterAll, Suite}
-import java.util.Date
 
 /** Shares a local `SparkContext` between all tests in a suite and closes it at the end. */
 trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
@@ -22,9 +23,12 @@ trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
     set("spark.ui.enabled", "false").
     set("spark.app.id", appID)
 
-  val spark: SparkSession = SparkSession.builder().master("local[*]").appName("test").config("spark.ui.enabled", "false").config("spark.app.id", appID)
+  val spark: SparkSession = SparkSession.builder()
+    .master("local[*]")
+    .appName("test")
+    .config("spark.ui.enabled", "false")
+    .config("spark.app.id", appID)
     .getOrCreate()
-
 
   override def beforeAll() {
     _sc = spark.sparkContext
