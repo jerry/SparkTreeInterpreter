@@ -8,7 +8,7 @@ Free software: BSD license
 
 Dependencies
 ------------
-Spark 1.4.1+
+Spark 2.0
 
 
 Usage and Tests
