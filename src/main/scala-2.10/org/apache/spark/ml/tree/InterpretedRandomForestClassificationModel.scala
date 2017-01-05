@@ -1,15 +1,15 @@
 package org.apache.spark.ml.tree
 
-import org.apache.spark.ml.classification.{DecisionTreeClassificationModel, ProbabilisticClassificationModel, RandomForestClassificationModel}
+import org.apache.spark.ml.classification.{DecisionTreeClassificationModel, RandomForestClassificationModel}
 import org.apache.spark.ml.linalg._
-import org.apache.spark.ml.util.Identifiable
+import org.apache.spark.ml.util.{Identifiable, MLReadable, MLReader}
 import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.sql.{DataFrame, Dataset}
 
-class InterpretedRandomForestClassificationModel private[ml] (override val uid: String,
-                                                              private val _trees: Array[DecisionTreeClassificationModel],
-                                                              override val numFeatures: Int,
-                                                              override val numClasses: Int)
+class InterpretedRandomForestClassificationModel (override val uid: String,
+                                                 private val _trees: Array[DecisionTreeClassificationModel],
+                                                 override val numFeatures: Int,
+                                                 override val numClasses: Int)
   extends RandomForestClassificationModel(uid: String, _trees: Array[DecisionTreeClassificationModel], numFeatures: Int, numClasses: Int) {
 
   private[ml] def this(trees: Array[DecisionTreeClassificationModel], numFeatures: Int, numClasses: Int) =
@@ -44,62 +44,57 @@ class InterpretedRandomForestClassificationModel private[ml] (override val uid: 
     * @return transformed dataset
     */
   override def transform(dataset: Dataset[_]): DataFrame = {
-    //    transformSchema(dataset.schema, logging = true)
-    //    if (isDefined(thresholds)) {
-    //      require($(thresholds).length == numClasses, this.getClass.getSimpleName +
-    //        ".transform() called with non-matching numClasses and thresholds.length." +
-    //        s" numClasses=$numClasses, but thresholds has length ${$(thresholds).length}")
-    //    }
-    //
-    //    // Output selected columns only.
-    //    // This is a bit complicated since it tries to avoid repeated computation.
-    //    var outputData = dataset
-    //    var numColsOutput = 0
-    //    if ($(rawPredictionCol).nonEmpty) {
-    //      val predictRawUDF = udf { (features: Any) =>
-    //        predictRaw(features.asInstanceOf[FeaturesType])
-    //      }
-    //      outputData = outputData.withColumn(getRawPredictionCol, predictRawUDF(col(getFeaturesCol)))
-    //      numColsOutput += 1
-    //    }
-    //    if ($(probabilityCol).nonEmpty) {
-    //      val probUDF = if ($(rawPredictionCol).nonEmpty) {
-    //        udf(raw2probability _).apply(col($(rawPredictionCol)))
-    //      } else {
-    //        val probabilityUDF = udf { (features: Any) =>
-    //          predictProbability(features.asInstanceOf[FeaturesType])
-    //        }
-    //        probabilityUDF(col($(featuresCol)))
-    //      }
-    //      outputData = outputData.withColumn($(probabilityCol), probUDF)
-    //      numColsOutput += 1
-    //    }
-    //    if ($(predictionCol).nonEmpty) {
-    //      val predUDF = if ($(rawPredictionCol).nonEmpty) {
-    //        udf(raw2prediction _).apply(col($(rawPredictionCol)))
-    //      } else if ($(probabilityCol).nonEmpty) {
-    //        udf(probability2prediction _).apply(col($(probabilityCol)))
-    //      } else {
-    //        val predictUDF = udf { (features: Any) =>
-    //          predict(features.asInstanceOf[FeaturesType])
-    //        }
-    //        predictUDF(col($(featuresCol)))
-    //      }
-    //      outputData = outputData.withColumn($(predictionCol), predUDF)
-    //      numColsOutput += 1
-    //    }
-    //
-    //    if (numColsOutput == 0) {
-    //      this.logWarning(s"$uid: ProbabilisticClassificationModel.transform() was called as NOOP" +
-    //        " since no output columns were set.")
-    //    }
-    //    outputData.toDF
     var outputData = dataset
     val predictRawUDF = udf { (features: Any) =>
       interpretedPrediction(features.asInstanceOf[Vector])
     }
     outputData = outputData.withColumn("interpretedPrediction", predictRawUDF(col(getFeaturesCol)))
+
+    val extractPredictionElementUDF = udf { (interpretedPrediction: Any) =>
+      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 0)
+    }
+    outputData = outputData.withColumn("prediction", extractPredictionElementUDF(col("interpretedPrediction")))
+
+    val extractPredictedLabelProbabilityUDF = udf { (interpretedPrediction: Any) =>
+      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 1)
+    }
+    outputData = outputData.withColumn("predictedLabelProbability", extractPredictedLabelProbabilityUDF(col("interpretedPrediction")))
+
+    val extractBiasUDF = udf { (interpretedPrediction: Any) =>
+      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 2)
+    }
+    outputData = outputData.withColumn("bias", extractBiasUDF(col("interpretedPrediction")))
+
+    val extractChecksumUDF = udf { (interpretedPrediction: Any) =>
+      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 3)
+    }
+    outputData = outputData.withColumn("checksum", extractChecksumUDF(col("interpretedPrediction")))
+
+    val extractProbabilitiesByClassUDF = udf { (interpretedPrediction: Any) =>
+      extractProbabilitiesByClass(interpretedPrediction.asInstanceOf[Vector])
+    }
+    outputData = outputData.withColumn("probabilitiesByClass", extractProbabilitiesByClassUDF(col("interpretedPrediction")))
+
+    val extractContributionsUDF = udf { (interpretedPrediction: Any) =>
+      extractContributions(interpretedPrediction.asInstanceOf[Vector])
+    }
+    outputData = outputData.withColumn("contributions", extractContributionsUDF(col("interpretedPrediction")))
+
+    // Array(prediction, predictedLabelProbability, avgBias, checkSum) ++ probabilities.toArray ++ averagedContributions
+    // TODO: extract the predictedLabel (string?), probabilities by class (Vector), bias (double) and feature contributions (Vector)
     outputData.toDF
+  }
+
+  def extractPredictionElement(interpretedPrediction: Vector, elementId: Int): Double = {
+    interpretedPrediction(elementId)
+  }
+
+  def extractProbabilitiesByClass(interpretedPrediction: Vector): Vector = {
+    Vectors.dense(interpretedPrediction.toArray.view(4, numClasses + 4).toArray)
+  }
+
+  def extractContributions(interpretedPrediction: Vector): Vector = {
+    Vectors.dense(interpretedPrediction.toArray.view(numClasses + 4, numFeatures + numClasses + 4).toArray)
   }
 
   /** Contributions are the contributions to a given prediction by the ensemble of decision trees, where each represents the change in probability of the
@@ -110,12 +105,11 @@ class InterpretedRandomForestClassificationModel private[ml] (override val uid: 
     *
     */
   def averageContributions(contributions: Array[Option[Array[FeatureContribution]]], features: Vector): Array[Array[Double]] = {
-    // TODO: flatMap contributions, filter and average per feature index and class
     val allContributions: Array[FeatureContribution] = contributions.flatMap(f => f.getOrElse(new Array[FeatureContribution](numClasses)))
     val avgContributions: Array[Array[Double]] = (0 until features.size).toArray.map(f => {
       // get the per-class contributions for the current featureIndex, f
       val i: Array[FeatureContribution] = allContributions.filter(p => p.featureIndex.equals(f))
-      val contributionCount = getNumTrees //i.length.toDouble
+      val contributionCount = getNumTrees
 
       (0 until numClasses).toArray.map(j => {
         val sumForFeature = i.map(f => f.contribution(j)).sum
@@ -124,7 +118,6 @@ class InterpretedRandomForestClassificationModel private[ml] (override val uid: 
         } else {
           sumForFeature/contributionCount
         }
-        // println(s"featureIndex: $f - $sumForFeature/$contributionCount = $avgForFeature for label $j")
         avgForFeature
       })
     })
@@ -151,16 +144,13 @@ class InterpretedRandomForestClassificationModel private[ml] (override val uid: 
     var nextTree: Int = 0
 
     _trees.view.foreach { tree =>
-      //println(s"\n---- starting tree $nextTree ----")
       val rootNode = tree.rootNode
       val transparentLeafNode: TransparentNode = new TransparentNode(tree.rootNode, numClasses, features, rootNode = true).interpretationImpl()
 
       val fc = transparentLeafNode.featureContributions()
       treeContributions.update(nextTree, fc)
 
-      // println(s"bias per class at root node: [${tree.rootNode.impurityStats.stats.mkString(", ")}]")
       biasValues.update(nextTree, tree.rootNode.impurityStats.stats)
-      //println(s"---- finishing tree $nextTree ----\n")
       nextTree += 1
 
       val classCounts: Array[Double] = transparentLeafNode.impurityStats.stats
@@ -185,13 +175,10 @@ class InterpretedRandomForestClassificationModel private[ml] (override val uid: 
 
     // Get the contributions for each possible label
     val allAveragedContributions: Array[Array[Double]] = averageContributions(treeContributions, features)
-//    println(s"allAveragedContributions - ${allAveragedContributions.length}, numClasses - $numClasses")
     assert(allAveragedContributions.length.equals(numFeatures))
 
     // Use the contributions from the actual label
     val averagedContributions: Array[Double] = allAveragedContributions.map(b => b(prediction.toInt))
-//    println(averagedContributions.length)
-//    println(features.size)
     assert(averagedContributions.length.equals(numFeatures))
 
 
@@ -200,29 +187,7 @@ class InterpretedRandomForestClassificationModel private[ml] (override val uid: 
 
     val checkSum: Double = averagedContributions.sum + avgBias
 
-    val checkSumToProbabilityRatio: Double = if (predictedLabelProbability > 0) {
-      checkSum/predictedLabelProbability
-    } else {
-      0.0
-    }
-
-    if (scala.math.abs(checkSumToProbabilityRatio - 1) > .2) {
-      println(s"kinda far out features: $features")
-      println(s" -- predictionLabel: $prediction, predictedLabelProbability: $predictedLabelProbability, bias: $avgBias, checkSum: $checkSum")
-      println(s" -- probabilities: ${probabilities.toArray.mkString(", ")}")
-      println(s" -- averagedContributions: ${averagedContributions.mkString(", ")}")
-      println(s" -- checkSumToProbabilityRatio: $checkSumToProbabilityRatio")
-    } else {
-      println(s"ok: $features")
-      println(s" -- predictionLabel: $prediction, predictedLabelProbability: $predictedLabelProbability, bias: $avgBias, checkSum: $checkSum")
-      println(s" -- probabilities: ${probabilities.toArray.mkString(", ")}")
-      println(s" -- averagedContributions: ${averagedContributions.mkString(", ")}")
-      println(s" -- checkSumToProbabilityRatio: $checkSumToProbabilityRatio")
-    }
-
-    //assert(scala.math.abs((checkSum/predictedLabelProbability)-1)<.2)
-
-    val x: Array[Double] = Array(prediction, avgBias, checkSum) ++ probabilities.toArray ++ averagedContributions
+    val x: Array[Double] = Array(prediction, predictedLabelProbability, avgBias, checkSum) ++ probabilities.toArray ++ averagedContributions
 
     new org.apache.spark.ml.linalg.DenseVector(x)
   }
@@ -233,4 +198,8 @@ class InterpretedRandomForestClassificationModel private[ml] (override val uid: 
   }
 }
 
-
+object InterpretedRandomForestClassificationModel extends MLReadable[InterpretedRandomForestClassificationModel] {
+  override def read: MLReader[InterpretedRandomForestClassificationModel] =
+    new InterpretedRandomForestClassificationModelReader
+  override def load(path: String): InterpretedRandomForestClassificationModel = super.load(path)
+}
