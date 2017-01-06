@@ -2,9 +2,10 @@ name := "SparkTreeInterpreter"
 
 version := "2.0.0"
 
-//sparkVersion := "1.4.0"
-//sparkVersion := "1.6.0"
 sparkVersion := "2.0.0"
+
+// Has been tested against 2.1
+//sparkVersion := "2.1.0"
 
 scalaVersion := {
   if (sparkVersion.value >= "2.0.0") {
@@ -16,16 +17,15 @@ scalaVersion := {
 
 resolvers += Resolver.mavenLocal
 
-val sparkTestingBaseVersion = "0.4.7"
+val sparkTestingBaseVersion = "0.5.0"
 
 sparkComponents := Seq("core", "sql", "mllib")
 
 libraryDependencies ++= Seq(
-  //"org.scalaz" %% "scalaz-core" % "7.2.8",
   "com.holdenkarau" %% "spark-testing-base" % s"${sparkVersion.value}_$sparkTestingBaseVersion"
 )
 
-// TODO: Hopefully we won't need to maintain a 2.10.x of this code..
+// Hopefully we won't need to maintain a pre Spark 2.0 version of this, but leaving the logic around just in case
 unmanagedSourceDirectories in Compile := {
   if (sparkVersion.value >= "2.0.0") {
     Seq((sourceDirectory in Compile) (_ / ("scala"))).join.value
