@@ -34,3 +34,5 @@ To run tests, just run `sbt test`.
 ML Usage and Tests
 -----
 InterpretedRandomForestClassifier extends RandomForestClassifier and can be used as a drop-in replacement.
+
+InterpretedRandomForestRegressor extends RandomForestRegressor and can be used as a drop-in replacement.
