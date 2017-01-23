@@ -21,8 +21,6 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
 
     val bcastModel = dataset.sparkSession.sparkContext.broadcast(this)
     val predictUDF = udf { (features: Any) =>
-      // Should be a vector with numFeatures + 3 elements
-      // bcastModel.value.predict(features.asInstanceOf[Vector])
       bcastModel.value.interpretedPrediction(features.asInstanceOf[Vector])
     }
 
@@ -96,37 +94,6 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
     Vectors.dense(interpretedPrediction.toArray.view(numClasses + 4, numFeatures + numClasses + 4).toArray)
   }
 
-  /** Contributions are the contributions to a given prediction by the ensemble of decision trees, where each represents the change in probability of the
-    * predicted label at each step in each decision tree.
-    *
-    * comes in as 1 per class, per feature, per tree
-    * leaves as an array of doubles (1 per class), per feature
-    *
-    */
-  def averageContributions(contributions: Array[Option[Array[FeatureContribution]]], features: Vector): Array[Array[Double]] = {
-    val allContributions: Array[FeatureContribution] = contributions.flatMap(f => f.getOrElse(new Array[FeatureContribution](numClasses)))
-    val avgContributions: Array[Array[Double]] = (0 until features.size).toArray.map(f => {
-      // get the per-class contributions for the current featureIndex, f
-      val i: Array[FeatureContribution] = allContributions.filter(p => p.featureIndex.equals(f))
-      val contributionCount = getNumTrees
-
-      (0 until numClasses).toArray.map(j => {
-        val sumForFeature = i.map(f => f.contribution(j)).sum
-        val avgForFeature = if (sumForFeature.equals(0.0) || contributionCount.equals(0.0)) {
-          0.0
-        } else {
-          sumForFeature / contributionCount
-        }
-        avgForFeature
-      })
-    })
-    avgContributions
-  }
-
-  def interpretedPrediction(features: Array[Double]): Vector = {
-    interpretedPrediction(Vectors.dense(features))
-  }
-
   /** Get a prediction, with bias, checksum, and, per-feature contribution amounts
     *
     * @param features vector of feature values
@@ -191,6 +158,33 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
     val x: Array[Double] = Array(prediction, predictedLabelProbability, avgBias, checkSum) ++ probabilities.toArray ++ averagedContributions
 
     Vectors.dense(x)
+  }
+
+  /** Contributions are the contributions to a given prediction by the ensemble of decision trees, where each represents the change in probability of the
+    * predicted label at each step in each decision tree.
+    *
+    * comes in as 1 per class, per feature, per tree
+    * leaves as an array of doubles (1 per class), per feature
+    *
+    */
+  private def averageContributions(contributions: Array[Option[Array[FeatureContribution]]], features: Vector): Array[Array[Double]] = {
+    val allContributions: Array[FeatureContribution] = contributions.flatMap(f => f.getOrElse(new Array[FeatureContribution](numClasses)))
+    val avgContributions: Array[Array[Double]] = (0 until features.size).toArray.map(f => {
+      // get the per-class contributions for the current featureIndex, f
+      val i: Array[FeatureContribution] = allContributions.filter(p => p.featureIndex.equals(f))
+      val contributionCount = getNumTrees
+
+      (0 until numClasses).toArray.map(j => {
+        val sumForFeature = i.map(f => f.contribution(j)).sum
+        val avgForFeature = if (sumForFeature.equals(0.0) || contributionCount.equals(0.0)) {
+          0.0
+        } else {
+          sumForFeature / contributionCount
+        }
+        avgForFeature
+      })
+    })
+    avgContributions
   }
 }
 

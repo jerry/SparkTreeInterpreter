@@ -1,6 +1,6 @@
 package org.apache.spark.ml.tree
 
-import org.apache.spark.ml.classification.{DecisionTreeClassificationModel, RandomForestClassificationModel}
+import org.apache.spark.ml.classification.DecisionTreeClassificationModel
 import org.apache.spark.ml.util.DefaultParamsReader.Metadata
 import org.apache.spark.ml.util.{DefaultParamsReader, MLReader}
 import org.json4s.DefaultFormats

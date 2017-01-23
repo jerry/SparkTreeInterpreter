@@ -23,7 +23,7 @@ class DressedForestTest extends FunSuite with TestSparkContext {
     val modelInfo = interpretedModelPipeline._2
     val rfModel = modelInfo
 
-    val testFeatures = Array[Double](6.0,3.4,4.5,1.6)
+    val testFeatures = new DenseVector(Array[Double](6.0,3.4,4.5,1.6))
     val v = rfModel.interpretedPrediction(testFeatures)
 
     assert(v.size.equals(11)) // we have all our fields
@@ -54,8 +54,6 @@ class DressedForestTest extends FunSuite with TestSparkContext {
     val dv = new DenseVector(testFeatures)
     val v = rfModel.interpretedPrediction(dv).toArray.takeRight(testFeatures.length)
     val impactJson = ImpactExtractor.labeledContributionsAsJson(new DenseVector(v), features.mkString(","), dv)
-    println(impactJson)
-    println(expectedJSONString)
     assert(impactJson.equals(expectedJSONString))
   }
 
@@ -64,8 +62,6 @@ class DressedForestTest extends FunSuite with TestSparkContext {
     val withImpactJson = predictions.selectExpr("*", s"labeledContributionsAsJson(contributions, '${features.mkString(",")}', features) as impact_json")
     val impactRow = withImpactJson.select("impact_json").collect()(0)
     val impactJson = impactRow.getString(0)
-    println(impactJson)
-    println(expectedJSONString)
     assert(impactJson.equals(expectedJSONString))
   }
 

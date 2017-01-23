@@ -32,15 +32,6 @@ trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
     super.beforeAll()
   }
 
-  override def afterAll() {
-    try {
-//      LocalSparkContext.stop(_sc)
-//      _sc = null
-    } finally {
-      super.afterAll()
-    }
-  }
-
   def resourcePath(fileOrDirectory: String): String = {
     val currentDir = System.getProperty("user.dir")
     val resourcesPath = s"$currentDir/src/test/resources"
