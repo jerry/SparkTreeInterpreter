@@ -6,7 +6,7 @@ import org.apache.spark.mllib.tree.impurity.ImpurityCalculator
 /** Collects feature contribution data while traversing a DecisionTree
   *
   * @param node associated ML tree node
-  * @param numClasses number of classes in the model
+  * @param numClasses number of classes in the model - use 0 for a regression tree
   * @param features feature values for prediction
   * @param rootNode is this the tree's root node?
   * @param contributions contributions collected in the tree thus far
@@ -32,8 +32,12 @@ class TransparentNode(node: Node, numClasses: Int, features: Vector, rootNode: B
         n.rightChild
       }
 
-      // How much does the probability per class change due to this split?
-      val contributionArray = Array(FeatureContribution(fIndex, predictionDelta(nextNode)))
+      // How much does the prediction change due to this split?
+      val contributionArray = if (numClasses != 0) {
+        Array(FeatureContribution(fIndex, predictionDelta(nextNode)))
+      } else {
+        Array(FeatureContribution(fIndex, Array(nextNode.prediction - prediction)))
+      }
 
       val allContributions: Option[Array[FeatureContribution]] = if (contributions.isDefined) {
         Some(contributions.get ++ contributionArray)

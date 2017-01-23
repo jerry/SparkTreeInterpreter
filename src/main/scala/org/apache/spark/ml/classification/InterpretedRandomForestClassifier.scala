@@ -1,6 +1,5 @@
-package org.apache.spark.ml.tree
+package org.apache.spark.ml.classification
 
-import org.apache.spark.ml.classification.{DecisionTreeClassificationModel, RandomForestClassifier}
 import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util.{Instrumentation, MetadataUtils}

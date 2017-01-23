@@ -1,6 +1,6 @@
-package org.apache.spark.ml.tree
+package org.apache.spark.ml.classification
 
-import org.apache.spark.ml.classification.DecisionTreeClassificationModel
+import org.apache.spark.ml.tree.{EnsembleModelReadWrite, Node}
 import org.apache.spark.ml.util.DefaultParamsReader.Metadata
 import org.apache.spark.ml.util.{DefaultParamsReader, MLReader}
 import org.json4s.DefaultFormats

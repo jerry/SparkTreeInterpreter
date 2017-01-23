@@ -8,10 +8,10 @@ Free software: BSD license
 
 Dependencies
 ------------
-Spark 1.4.1+
+Spark 2.0.0+
 
 
-Usage and Tests
+MLlib Usage and Tests
 -----
 Given a trained RandomForestModel/DecisionTreeModel and an RDD[LabeledPoint], we have
 
@@ -28,5 +28,9 @@ yields
 
 The sum of bias and feature contributions should equal the prediction, but due to floating point arithmetic they will be slightly off.
 
-To run tests, just run `sbt test` .
+To run tests, just run `sbt test`.
 
+
+ML Usage and Tests
+-----
+InterpretedRandomForestClassifier extends RandomForestClassifier and can be used as a drop-in replacement.

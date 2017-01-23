@@ -1,8 +1,10 @@
 import com.holdenkarau.spark.testing.{LocalSparkContext, SparkContextProvider}
 import org.apache.spark._
-import org.apache.spark.sql.{SQLContext, SparkSession}
+import org.apache.spark.sql.{DataFrame, SQLContext, SparkSession}
 import org.scalatest.{BeforeAndAfterAll, Suite}
 import java.util.Date
+
+import org.apache.spark.ml.feature.VectorAssembler
 
 /** Shares a local `SparkContext` between all tests in a suite and closes it at the end. */
 trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
@@ -36,5 +38,9 @@ trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
     val currentDir = System.getProperty("user.dir")
     val resourcesPath = s"$currentDir/src/test/resources"
     s"$resourcesPath/$fileOrDirectory"
+  }
+
+  def transformedDF(df: DataFrame, features: Array[String]): DataFrame = {
+    new VectorAssembler().setInputCols(features).setOutputCol("features").transform(df)
   }
 }

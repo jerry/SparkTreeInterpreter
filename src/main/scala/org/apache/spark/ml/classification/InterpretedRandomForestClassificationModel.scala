@@ -1,7 +1,7 @@
-package org.apache.spark.ml.tree
+package org.apache.spark.ml.classification
 
-import org.apache.spark.ml.classification.{DecisionTreeClassificationModel, RandomForestClassificationModel}
 import org.apache.spark.ml.linalg._
+import org.apache.spark.ml.tree.{FeatureContribution, TransparentNode}
 import org.apache.spark.ml.util.{Identifiable, MLReadable, MLReader}
 import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.sql.{DataFrame, Dataset}
@@ -17,17 +17,11 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
   override def toString: String = "InterpretedRandomForestClassificationModel"
 
   override protected def transformImpl(dataset: Dataset[_]): DataFrame = {
-    println(dataset.schema.treeString)
-
     val bcastModel = dataset.sparkSession.sparkContext.broadcast(this)
     val predictUDF = udf { (features: Any) =>
       bcastModel.value.interpretedPrediction(features.asInstanceOf[Vector])
     }
-
-    //println(s"setting ${predictionCol.name}")
-    val d = dataset.withColumn($(predictionCol), predictUDF(col($(featuresCol))))
-    println(d.schema.treeString)
-    d
+    dataset.withColumn($(predictionCol), predictUDF(col($(featuresCol))))
   }
 
   /**
@@ -77,8 +71,6 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
     }
     outputData = outputData.withColumn("contributions", extractContributionsUDF(col("interpretedPrediction")))
 
-    // Array(prediction, predictedLabelProbability, avgBias, checkSum) ++ probabilities.toArray ++ averagedContributions
-    // TODO: extract the predictedLabel (string?), probabilities by class (Vector), bias (double) and feature contributions (Vector)
     outputData.toDF
   }
 

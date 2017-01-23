@@ -1,12 +1,12 @@
 import org.apache.spark.ml.{Pipeline, PipelineModel}
-import org.apache.spark.ml.classification.RandomForestClassifier
-import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorAssembler, VectorIndexer}
+import org.apache.spark.ml.classification.{InterpretedRandomForestClassificationModel, InterpretedRandomForestClassifier, RandomForestClassifier}
+import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
 import org.apache.spark.ml.linalg.DenseVector
-import org.apache.spark.ml.tree.{ImpactExtractor, InterpretedRandomForestClassificationModel, InterpretedRandomForestClassifier}
+import org.apache.spark.ml.tree.ImpactExtractor
 import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.scalatest.FunSuite
 
-class DressedForestTest extends FunSuite with TestSparkContext {
+class TestInterpretedRandomForestClassifier extends FunSuite with TestSparkContext {
   val features = Array("sepal_length", "sepal_width", "petal_length", "petal_width")
 
   private var _interpretedModelPipeline: Option[(PipelineModel, InterpretedRandomForestClassificationModel, Dataset[Row], Dataset[Row])] = None
@@ -153,14 +153,9 @@ class DressedForestTest extends FunSuite with TestSparkContext {
 
   private def loadIrisData(): DataFrame = {
     sqlContext.read
-      .format("com.databricks.spark.csv")
       .option("header", "true") // Use first line of all files as header
       .option("inferSchema", "true") // Automatically infer data types
-      .load(resourcePath("iris.csv"))
-  }
-
-  private def transformedDF(df: DataFrame, features: Array[String]): DataFrame = {
-    new VectorAssembler().setInputCols(features).setOutputCol("features").transform(df)
+      .csv(resourcePath("iris.csv"))
   }
 
   val expectedJSONString: String =

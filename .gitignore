@@ -13,3 +13,4 @@ out
 /src/test/resources/irisInterpretedPipeline
 /src/test/resources/irisRandomForestPipeline
 /src/test/resources/irisRandomForestClassificationModel
+/src/test/resources/bostonInterpretedPipeline
