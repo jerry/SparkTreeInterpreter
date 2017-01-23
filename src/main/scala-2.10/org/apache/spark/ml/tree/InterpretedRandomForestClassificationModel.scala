@@ -11,7 +11,6 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
                                                  override val numFeatures: Int,
                                                  override val numClasses: Int)
   extends RandomForestClassificationModel(uid: String, _trees: Array[DecisionTreeClassificationModel], numFeatures: Int, numClasses: Int) {
-
   private[ml] def this(trees: Array[DecisionTreeClassificationModel], numFeatures: Int, numClasses: Int) =
     this(Identifiable.randomUID("rfc"), trees, numFeatures, numClasses)
 
@@ -116,7 +115,7 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
         val avgForFeature = if (sumForFeature.equals(0.0) || contributionCount.equals(0.0)) {
           0.0
         } else {
-          sumForFeature/contributionCount
+          sumForFeature / contributionCount
         }
         avgForFeature
       })
@@ -128,7 +127,7 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
     interpretedPrediction(Vectors.dense(features))
   }
 
-  /** Get a prediction, with bias, checksum, and, per feature, contribution amounts
+  /** Get a prediction, with bias, checksum, and, per-feature contribution amounts
     *
     * @param features vector of feature values
     * @return prediction, bias, checksum, contribution amounts
@@ -145,12 +144,12 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
 
     _trees.view.foreach { tree =>
       val rootNode = tree.rootNode
-      val transparentLeafNode: TransparentNode = new TransparentNode(tree.rootNode, numClasses, features, rootNode = true).interpretationImpl()
+      val transparentLeafNode: TransparentNode = new TransparentNode(rootNode, numClasses, features, rootNode = true).interpretationImpl()
 
       val fc = transparentLeafNode.featureContributions()
       treeContributions.update(nextTree, fc)
 
-      biasValues.update(nextTree, tree.rootNode.impurityStats.stats)
+      biasValues.update(nextTree, rootNode.impurityStats.stats)
       nextTree += 1
 
       val classCounts: Array[Double] = transparentLeafNode.impurityStats.stats
@@ -173,8 +172,8 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
     }
     val predictionLabelIndex: Int = prediction.toInt
 
-    // Get the contributions for each possible label
-    val allAveragedContributions: Array[Array[Double]] = averageContributions(treeContributions, features)
+
+    val allAveragedContributions: Array[Array[Double]] = averageContributions(treeContributions, features) // Get the contributions for each possible label
     assert(allAveragedContributions.length.equals(numFeatures))
 
     // Use the contributions from the actual label
@@ -182,19 +181,16 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
     assert(averagedContributions.length.equals(numFeatures))
 
 
-    val avgBias: Double = biasValues.map(f => { f(predictionLabelIndex)/f.sum }).sum/getNumTrees.toDouble
+    val avgBias: Double = biasValues.map(f => {
+      f(predictionLabelIndex) / f.sum
+    }).sum / getNumTrees.toDouble
     val predictedLabelProbability = probabilities(predictionLabelIndex)
 
     val checkSum: Double = averagedContributions.sum + avgBias
 
     val x: Array[Double] = Array(prediction, predictedLabelProbability, avgBias, checkSum) ++ probabilities.toArray ++ averagedContributions
 
-    new org.apache.spark.ml.linalg.DenseVector(x)
-  }
-
-  override protected def raw2probability(rawPrediction: Vector): Vector = {
-    val probs = rawPrediction.copy
-    raw2probabilityInPlace(probs)
+    Vectors.dense(x)
   }
 }
 

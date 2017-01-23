@@ -5,7 +5,6 @@ import org.apache.spark.ml.util.DefaultParamsReader.Metadata
 import org.apache.spark.ml.util.{DefaultParamsReader, MLReader}
 import org.json4s.DefaultFormats
 
-
 class InterpretedRandomForestClassificationModelReader extends MLReader[InterpretedRandomForestClassificationModel] {
 
   /** Checked against metadata when loading model */

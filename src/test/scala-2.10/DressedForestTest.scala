@@ -1,11 +1,14 @@
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.classification.RandomForestClassifier
 import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorAssembler, VectorIndexer}
-import org.apache.spark.ml.tree.{InterpretedRandomForestClassificationModel, InterpretedRandomForestClassifier}
+import org.apache.spark.ml.linalg.DenseVector
+import org.apache.spark.ml.tree.{ImpactExtractor, InterpretedRandomForestClassificationModel, InterpretedRandomForestClassifier}
 import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.scalatest.FunSuite
 
 class DressedForestTest extends FunSuite with TestSparkContext {
+  val features = Array("sepal_length", "sepal_width", "petal_length", "petal_width")
+
   private var _interpretedModelPipeline: Option[(PipelineModel, InterpretedRandomForestClassificationModel, Dataset[Row], Dataset[Row])] = None
 
   lazy val interpretedModelPipeline: (PipelineModel, InterpretedRandomForestClassificationModel, Dataset[Row], Dataset[Row]) = {
@@ -43,18 +46,53 @@ class DressedForestTest extends FunSuite with TestSparkContext {
     assert(outOfSpecCount == 0)
   }
 
-  test("Dare to Compare Labels") {
+  test("Verify code for impact JSON") {
+    val modelInfo = interpretedModelPipeline._2
+    val rfModel = modelInfo
+    val testFeatures = Array[Double](5.5,2.6,4.4,1.2) // "91",5.5,2.6,4.4,1.2,"versicolor"
+
+    val dv = new DenseVector(testFeatures)
+    val v = rfModel.interpretedPrediction(dv).toArray.takeRight(testFeatures.length)
+    val impactJson = ImpactExtractor.labeledContributionsAsJson(new DenseVector(v), features.mkString(","), dv)
+    println(impactJson)
+    println(expectedJSONString)
+    assert(impactJson.equals(expectedJSONString))
+  }
+
+  test("Verify impact JSON from UDF") {
+    val predictions = interpretedModelPipeline._3.where("observation = 91") // "91",5.5,2.6,4.4,1.2,"versicolor"
+    val withImpactJson = predictions.selectExpr("*", s"labeledContributionsAsJson(contributions, '${features.mkString(",")}', features) as impact_json")
+    val impactRow = withImpactJson.select("impact_json").collect()(0)
+    val impactJson = impactRow.getString(0)
+    println(impactJson)
+    println(expectedJSONString)
+    assert(impactJson.equals(expectedJSONString))
+  }
+
+  test("Check overall model field importances") {
+    println("Interpreted-RF importances")
+    var fIndex = 0
+    val imp = interpretedModelPipeline._2.featureImportances.toArray.map(f => {
+      val str = s"${features(fIndex)} - $f"
+      fIndex += 1
+      str
+    }).mkString("\n")
+
+    assert(imp.equals(expectedFieldImportances))
+  }
+
+  test("labels match standard random forest label output") {
     val predictions = interpretedModelPipeline._3
     val rfDF = rfPredictions().withColumnRenamed("observation", "rf_observation").withColumnRenamed("predictedLabel", "rf_predictedLabel")
     val j = predictions.join(rfDF, predictions("observation") === rfDF("rf_observation") && predictions("predictedLabel") === rfDF("rf_predictedLabel"))
     assert(predictions.count().equals(j.count()))
   }
 
-  test("Can we save?") {
+  test("Pipeline can be saved") {
     interpretedModelPipeline._1.write.overwrite().save(resourcePath("irisInterpretedPipeline"))
   }
 
-  test("Can we read?") {
+  test("Pipeline can be read") {
     val p = PipelineModel.load(resourcePath("irisInterpretedPipeline"))
     val predictions = p.transform(interpretedModelPipeline._4)
     println(predictions.schema.fieldNames)
@@ -63,8 +101,10 @@ class DressedForestTest extends FunSuite with TestSparkContext {
 
   def createInterpretedPipeline(): (PipelineModel, InterpretedRandomForestClassificationModel, DataFrame, DataFrame) = {
     val df = loadIrisData()
-    val features = Array("sepal_length", "sepal_width", "petal_length", "petal_width")
     val transformedValues = transformedDF(df, features)
+
+    df.sparkSession.udf.register("labeledContributionsAsJson", (contributions: DenseVector, featureList: String, featureValues: DenseVector) =>
+      ImpactExtractor.labeledContributionsAsJson(contributions, featureList, featureValues))
 
     val labelIndexer = new StringIndexer().setInputCol("species").setOutputCol("indexedLabel").fit(transformedValues)
     val featureIndexer = new VectorIndexer().setInputCol("features").setOutputCol("indexedFeatures").setMaxCategories(4).fit(transformedValues)
@@ -86,16 +126,8 @@ class DressedForestTest extends FunSuite with TestSparkContext {
     val model = pipeline.fit(trainingData)
     val rfModel = model.stages(2).asInstanceOf[InterpretedRandomForestClassificationModel]
 
-//    var fCount = 0
-//    println("Interpreted-RF importances")
-//    rfModel.featureImportances.toArray.foreach(f => {
-//      println(s"$f - ${features(fCount)}")
-//      fCount += 1
-//    })
-
     (model, rfModel, model.transform(testData), testData)
   }
-
 
   def rfPredictions(): DataFrame = {
     val df = loadIrisData()
@@ -123,12 +155,6 @@ class DressedForestTest extends FunSuite with TestSparkContext {
     model.transform(testData)
   }
 
-  private def resourcePath(fileOrDirectory: String): String = {
-    val currentDir = System.getProperty("user.dir")
-    val resourcesPath = s"$currentDir/src/test/resources"
-    s"$resourcesPath/$fileOrDirectory"
-  }
-
   private def loadIrisData(): DataFrame = {
     sqlContext.read
       .format("com.databricks.spark.csv")
@@ -140,4 +166,40 @@ class DressedForestTest extends FunSuite with TestSparkContext {
   private def transformedDF(df: DataFrame, features: Array[String]): DataFrame = {
     new VectorAssembler().setInputCols(features).setOutputCol("features").transform(df)
   }
+
+  val expectedJSONString: String =
+    """{
+      |  "contributions": [
+      |    {
+      |      "feature_index": 0,
+      |      "field_name": "sepal_length",
+      |      "feature_impact": 0.010901162790697671,
+      |      "feature_value": 5.5
+      |    },
+      |    {
+      |      "feature_index": 1,
+      |      "field_name": "sepal_width",
+      |      "feature_impact": 0.0,
+      |      "feature_value": 2.6
+      |    },
+      |    {
+      |      "feature_index": 2,
+      |      "field_name": "petal_length",
+      |      "feature_impact": 0.2241226097580585,
+      |      "feature_value": 4.4
+      |    },
+      |    {
+      |      "feature_index": 3,
+      |      "field_name": "petal_width",
+      |      "feature_impact": 0.45881226522133056,
+      |      "feature_value": 1.2
+      |    }
+      |  ]
+      |}""".stripMargin
+
+  val expectedFieldImportances: String =
+    """sepal_length - 0.0232888015166167
+      |sepal_width - 0.01262475537984371
+      |petal_length - 0.3777193883591449
+      |petal_width - 0.5863670547443947""".stripMargin
 }

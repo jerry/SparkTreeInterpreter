@@ -40,4 +40,10 @@ trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
       super.afterAll()
     }
   }
+
+  def resourcePath(fileOrDirectory: String): String = {
+    val currentDir = System.getProperty("user.dir")
+    val resourcesPath = s"$currentDir/src/test/resources"
+    s"$resourcesPath/$fileOrDirectory"
+  }
 }
