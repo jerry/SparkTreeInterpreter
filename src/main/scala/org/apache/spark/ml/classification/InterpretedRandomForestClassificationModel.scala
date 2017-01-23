@@ -64,14 +64,14 @@ class InterpretedRandomForestClassificationModel (override val uid: String,
     val extractProbabilitiesByClassUDF = udf { (interpretedPrediction: Any) =>
       extractProbabilitiesByClass(interpretedPrediction.asInstanceOf[Vector])
     }
-    outputData = outputData.withColumn("probabilitiesByClass", extractProbabilitiesByClassUDF(col("interpretedPrediction")))
+    outputData = outputData.withColumn("probability", extractProbabilitiesByClassUDF(col("interpretedPrediction")))
 
     val extractContributionsUDF = udf { (interpretedPrediction: Any) =>
       extractContributions(interpretedPrediction.asInstanceOf[Vector])
     }
     outputData = outputData.withColumn("contributions", extractContributionsUDF(col("interpretedPrediction")))
 
-    outputData.toDF
+    outputData.toDF.withColumnRenamed("interpretedPrediction", "rawPrediction")
   }
 
   def extractPredictionElement(interpretedPrediction: Vector, elementId: Int): Double = {

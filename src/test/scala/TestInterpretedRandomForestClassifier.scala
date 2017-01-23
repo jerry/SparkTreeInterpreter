@@ -79,7 +79,11 @@ class TestInterpretedRandomForestClassifier extends FunSuite with TestSparkConte
 
   test("labels match standard random forest label output") {
     val predictions = interpretedModelPipeline._3
-    val rfDF = rfPredictions().withColumnRenamed("observation", "rf_observation").withColumnRenamed("predictedLabel", "rf_predictedLabel")
+    println(predictions.schema.printTreeString())
+    val rf = rfPredictions()
+    println(rf.schema.printTreeString())
+
+    val rfDF = rf.withColumnRenamed("observation", "rf_observation").withColumnRenamed("predictedLabel", "rf_predictedLabel")
     val j = predictions.join(rfDF, predictions("observation") === rfDF("rf_observation") && predictions("predictedLabel") === rfDF("rf_predictedLabel"))
     assert(predictions.count().equals(j.count()))
   }
