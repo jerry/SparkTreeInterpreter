@@ -123,7 +123,7 @@ class DressedForestTest extends FunSuite with TestSparkContext {
     model.transform(testData)
   }
 
-  private def resourcePath(fileOrDirectory: String): String = {
+  override def resourcePath(fileOrDirectory: String): String = {
     val currentDir = System.getProperty("user.dir")
     val resourcesPath = s"$currentDir/src/test/resources"
     s"$resourcesPath/$fileOrDirectory"
@@ -137,7 +137,7 @@ class DressedForestTest extends FunSuite with TestSparkContext {
       .load(resourcePath("iris.csv"))
   }
 
-  private def transformedDF(df: DataFrame, features: Array[String]): DataFrame = {
+  override def transformedDF(df: DataFrame, features: Array[String]): DataFrame = {
     new VectorAssembler().setInputCols(features).setOutputCol("features").transform(df)
   }
 }
