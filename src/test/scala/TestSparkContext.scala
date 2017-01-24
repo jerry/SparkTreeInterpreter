@@ -2,8 +2,10 @@ import java.util.Date
 
 import com.holdenkarau.spark.testing.SparkContextProvider
 import org.apache.spark._
-import org.apache.spark.sql.{SQLContext, SparkSession}
+import org.apache.spark.sql.{DataFrame, SQLContext, SparkSession}
 import org.scalatest.{BeforeAndAfterAll, Suite}
+
+import org.apache.spark.ml.feature.VectorAssembler
 
 /** Shares a local `SparkContext` between all tests in a suite and closes it at the end. */
 trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
@@ -36,12 +38,13 @@ trait TestSparkContext extends BeforeAndAfterAll with SparkContextProvider {
     super.beforeAll()
   }
 
-  override def afterAll() {
-    try {
-//      LocalSparkContext.stop(_sc)
-//      _sc = null
-    } finally {
-      super.afterAll()
-    }
+  def resourcePath(fileOrDirectory: String): String = {
+    val currentDir = System.getProperty("user.dir")
+    val resourcesPath = s"$currentDir/src/test/resources"
+    s"$resourcesPath/$fileOrDirectory"
+  }
+
+  def transformedDF(df: DataFrame, features: Array[String]): DataFrame = {
+    new VectorAssembler().setInputCols(features).setOutputCol("features").transform(df)
   }
 }
