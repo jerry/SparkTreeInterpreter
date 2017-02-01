@@ -1,8 +1,9 @@
-package org.apache.spark.ml.regression
+package org.apache.spark.ml.interpretedrandomforest.regression
 
 import org.apache.spark.annotation.Since
 import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.linalg.{Vector, Vectors}
+import org.apache.spark.ml.regression.{DecisionTreeRegressionModel, RandomForestRegressionModel, RandomForestRegressor}
 import org.apache.spark.ml.tree._
 import org.apache.spark.ml.tree.impl.RandomForest
 import org.apache.spark.ml.util.DefaultParamsReader.Metadata
@@ -38,16 +39,6 @@ class InterpretedRandomForestRegressor(override val uid: String) extends RandomF
   }
 }
 
-object InterpretedRandomForestRegressor extends RandomForestRegressor {
-  /** Accessor for supported impurity settings: variance */
-  final val supportedImpurities: Array[String] = TreeRegressorParams.supportedImpurities
-
-  /** Accessor for supported featureSubsetStrategy settings: auto, all, onethird, sqrt, log2 */
-  final val supportedFeatureSubsetStrategies: Array[String] = RandomForestParams.supportedFeatureSubsetStrategies
-
-  //override def load(path: String): InterpretedRandomForestRegressor = super.load(path)
-}
-
 /**
   * [[http://en.wikipedia.org/wiki/Random_forest  Random Forest]] model for regression.
   * It supports both continuous and categorical features.
@@ -76,7 +67,29 @@ class InterpretedRandomForestRegressionModel private[ml] (
     val predictUDF = udf { (features: Any) =>
       bcastModel.value.interpretedPrediction(features.asInstanceOf[Vector])
     }
-    dataset.withColumn($(predictionCol), predictUDF(col($(featuresCol))))
+    dataset.withColumn($(predictionCol), predictUDF(col($(featuresCol)))).transform(extractDetailColumns)
+  }
+
+  def extractDetailColumns(df: DataFrame): DataFrame = {
+    val extractPredictionElementUDF = udf { (interpretedPrediction: Any) =>
+      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 0)
+    }
+    val withPrediction = df.withColumn("prediction", extractPredictionElementUDF(col("interpretedPrediction")))
+
+    val extractBiasUDF = udf { (interpretedPrediction: Any) =>
+      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 1)
+    }
+    val withBias = withPrediction.withColumn("bias", extractBiasUDF(col("interpretedPrediction")))
+
+    val extractChecksumUDF = udf { (interpretedPrediction: Any) =>
+      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 2)
+    }
+    val withChecksum = withBias.withColumn("checksum", extractChecksumUDF(col("interpretedPrediction")))
+
+    val extractContributionsUDF = udf { (interpretedPrediction: Any) =>
+      extractContributions(interpretedPrediction.asInstanceOf[Vector])
+    }
+    withChecksum.withColumn("contributions", extractContributionsUDF(col("interpretedPrediction")))
   }
 
   /**
@@ -88,33 +101,7 @@ class InterpretedRandomForestRegressionModel private[ml] (
     * @return transformed dataset
     */
   override def transform(dataset: Dataset[_]): DataFrame = {
-    var outputData = dataset
-    val predictRawUDF = udf { (features: Any) =>
-      interpretedPrediction(features.asInstanceOf[Vector])
-    }
-    outputData = outputData.withColumn("interpretedPrediction", predictRawUDF(col(getFeaturesCol)))
-
-    val extractPredictionElementUDF = udf { (interpretedPrediction: Any) =>
-      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 0)
-    }
-    outputData = outputData.withColumn("prediction", extractPredictionElementUDF(col("interpretedPrediction")))
-
-    val extractBiasUDF = udf { (interpretedPrediction: Any) =>
-      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 1)
-    }
-    outputData = outputData.withColumn("bias", extractBiasUDF(col("interpretedPrediction")))
-
-    val extractChecksumUDF = udf { (interpretedPrediction: Any) =>
-      extractPredictionElement(interpretedPrediction.asInstanceOf[Vector], 2)
-    }
-    outputData = outputData.withColumn("checksum", extractChecksumUDF(col("interpretedPrediction")))
-
-    val extractContributionsUDF = udf { (interpretedPrediction: Any) =>
-      extractContributions(interpretedPrediction.asInstanceOf[Vector])
-    }
-    outputData = outputData.withColumn("contributions", extractContributionsUDF(col("interpretedPrediction")))
-
-    outputData.toDF
+    transformImpl(dataset)
   }
 
   def extractPredictionElement(interpretedPrediction: Vector, elementId: Int): Double = {

@@ -1,10 +1,11 @@
 import org.apache.spark.ml.{Pipeline, PipelineModel}
-import org.apache.spark.ml.classification.{InterpretedRandomForestClassificationModel, InterpretedRandomForestClassifier, RandomForestClassifier}
+import org.apache.spark.ml.classification.RandomForestClassifier
 import org.apache.spark.ml.feature.{IndexToString, StringIndexer, VectorIndexer}
 import org.apache.spark.ml.linalg.DenseVector
 import org.apache.spark.ml.tree.ImpactExtractor
 import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.scalatest.FunSuite
+import org.apache.spark.ml.interpretedrandomforest.classifier.{InterpretedRandomForestClassificationModel, InterpretedRandomForestClassifier}
 
 class TestInterpretedRandomForestClassifier extends FunSuite with TestSparkContext {
   val features = Array("sepal_length", "sepal_width", "petal_length", "petal_width")

@@ -1,16 +1,46 @@
-package org.apache.spark.ml.classification
+package org.apache.spark.ml.interpretedrandomforest.classifier
 
+import org.apache.spark.ml.classification.{DecisionTreeClassificationModel, RandomForestClassificationModel, RandomForestClassifier}
+import org.apache.spark.ml.feature.LabeledPoint
 import org.apache.spark.ml.linalg._
-import org.apache.spark.ml.tree.{FeatureContribution, TransparentNode}
-import org.apache.spark.ml.util.{Identifiable, MLReadable, MLReader}
+import org.apache.spark.ml.tree.impl.RandomForest
+import org.apache.spark.ml.tree.{EnsembleModelReadWrite, FeatureContribution, Node, TransparentNode}
+import org.apache.spark.ml.util.DefaultParamsReader.Metadata
+import org.apache.spark.ml.util._
+import org.apache.spark.rdd.RDD
+import org.apache.spark.mllib.tree.configuration.{Algo => OldAlgo}
 import org.apache.spark.sql.functions.{col, udf}
 import org.apache.spark.sql.{DataFrame, Dataset}
+import org.json4s.DefaultFormats
 
-class InterpretedRandomForestClassificationModel (override val uid: String,
-                                                 private val _trees: Array[DecisionTreeClassificationModel],
-                                                 override val numFeatures: Int,
-                                                 override val numClasses: Int)
+class InterpretedRandomForestClassifier extends RandomForestClassifier {
+  override protected def train(dataset: Dataset[_]): InterpretedRandomForestClassificationModel = {
+    val categoricalFeatures: Map[Int, Int] =
+      MetadataUtils.getCategoricalFeatures(dataset.schema($(featuresCol)))
+    val numClasses: Int = getNumClasses(dataset)
+    val oldDataset: RDD[LabeledPoint] = extractLabeledPoints(dataset, numClasses)
+    val strategy =
+      super.getOldStrategy(categoricalFeatures, numClasses, OldAlgo.Classification, getOldImpurity)
+
+    val instr = Instrumentation.create(this, oldDataset)
+    instr.logParams(params: _*)
+
+    val trees = RandomForest
+      .run(oldDataset, strategy, getNumTrees, getFeatureSubsetStrategy, getSeed, Some(instr))
+      .map(_.asInstanceOf[DecisionTreeClassificationModel])
+
+    val numFeatures = oldDataset.first().features.size
+    val m = new InterpretedRandomForestClassificationModel(trees, numFeatures, numClasses)
+    instr.logSuccess(m)
+    m
+  }
+
+}
+
+class InterpretedRandomForestClassificationModel (override val uid: String, private val _trees: Array[DecisionTreeClassificationModel],
+                                                  override val numFeatures: Int, override val numClasses: Int)
   extends RandomForestClassificationModel(uid: String, _trees: Array[DecisionTreeClassificationModel], numFeatures: Int, numClasses: Int) {
+
   private[ml] def this(trees: Array[DecisionTreeClassificationModel], numFeatures: Int, numClasses: Int) =
     this(Identifiable.randomUID("rfc"), trees, numFeatures, numClasses)
 
@@ -184,4 +214,37 @@ object InterpretedRandomForestClassificationModel extends MLReadable[Interpreted
   override def read: MLReader[InterpretedRandomForestClassificationModel] =
     new InterpretedRandomForestClassificationModelReader
   override def load(path: String): InterpretedRandomForestClassificationModel = super.load(path)
+
+  class InterpretedRandomForestClassificationModelReader extends MLReader[InterpretedRandomForestClassificationModel] {
+
+
+    /** Checked against metadata when loading model */
+    private val className = classOf[InterpretedRandomForestClassificationModel].getName
+    private val treeClassName = classOf[DecisionTreeClassificationModel].getName
+
+    override def load(path: String): InterpretedRandomForestClassificationModel = {
+      //super.load(path).asInstanceOf[InterpretedRandomForestClassificationModel]
+
+      implicit val format = DefaultFormats
+      val (metadata: Metadata, treesData: Array[(Metadata, Node)], _) =
+        EnsembleModelReadWrite.loadImpl(path, sparkSession, className, treeClassName)
+      val numFeatures = (metadata.metadata \ "numFeatures").extract[Int]
+      val numClasses = (metadata.metadata \ "numClasses").extract[Int]
+      val numTrees = (metadata.metadata \ "numTrees").extract[Int]
+
+      val trees: Array[DecisionTreeClassificationModel] = treesData.map {
+        case (treeMetadata, root) =>
+          val tree =
+            new DecisionTreeClassificationModel(treeMetadata.uid, root, numFeatures, numClasses)
+          DefaultParamsReader.getAndSetParams(tree, treeMetadata)
+          tree
+      }
+      require(numTrees == trees.length, s"InterpretedRandomForestClassificationModel.load expected $numTrees" +
+        s" trees based on metadata but found ${trees.length} trees.")
+
+      val model = new InterpretedRandomForestClassificationModel(metadata.uid, trees, numFeatures, numClasses)
+      DefaultParamsReader.getAndSetParams(model, metadata)
+      model
+    }
+  }
 }

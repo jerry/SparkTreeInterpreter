@@ -1,8 +1,9 @@
+import org.apache.spark.ml.interpretedrandomforest.regression.{InterpretedRandomForestRegressionModel, InterpretedRandomForestRegressor}
 import org.apache.spark.ml.{Pipeline, PipelineModel}
 import org.apache.spark.ml.evaluation.RegressionEvaluator
 import org.apache.spark.ml.feature.VectorIndexer
 import org.apache.spark.ml.linalg.DenseVector
-import org.apache.spark.ml.regression.{InterpretedRandomForestRegressionModel, InterpretedRandomForestRegressor, RandomForestRegressor}
+import org.apache.spark.ml.regression.RandomForestRegressor
 import org.apache.spark.ml.tree.ImpactExtractor
 import org.apache.spark.sql.{DataFrame, Dataset, Row}
 import org.scalatest.FunSuite
